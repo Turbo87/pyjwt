@@ -89,8 +89,10 @@ def decode(jwt, key='', verify=True, **kwargs):
     payload, signing_input, header, signature = load(jwt)
 
     if verify:
-        verify_signature(payload, signing_input, header, signature, key,
-                         **kwargs)
+        verify_signature(
+            payload, signing_input, header,
+            signature, key, **kwargs
+        )
 
     return payload
 
@@ -136,7 +138,20 @@ def load(jwt):
 
 def verify_signature(payload, signing_input, header, signature, key='',
                      verify_expiration=True, leeway=0, audience=None,
-                     issuer=None):
+                     issuer=None, algorithms=None):
+
+    if not algorithms and isinstance(key, string_types):
+        secret = key
+        if isinstance(key, text_type):
+            secret = key.encode('utf-8')
+
+        if b'BEGIN CERTIFICATE' in secret or b'BEGIN PUBLIC KEY' in secret:
+            algorithms = ['RS256', 'RS384', 'RS512', 'ES256', 'ES384', 'ES512']
+        else:
+            algorithms = ['HS256', 'HS384', 'HS512']
+
+    if not algorithms:
+        algorithms = _algorithms.keys()
 
     if isinstance(leeway, timedelta):
         leeway = timedelta_total_seconds(leeway)
@@ -146,6 +161,10 @@ def verify_signature(payload, signing_input, header, signature, key='',
 
     try:
         alg_obj = _algorithms[header['alg']]
+
+        if header['alg'] not in algorithms:
+            raise DecodeError('Signature verification failed')
+
         key = alg_obj.prepare_key(key)
 
         if not alg_obj.verify(signing_input, key, signature):

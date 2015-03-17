@@ -248,7 +248,7 @@ class TestJWT(unittest.TestCase):
             b'urHRJDJHTqIdpLWXkY7zVikeen6FhuGyn060Dz9gYq9t'
             b'uwmrtSWCBUjiN8sqJ00CDgycxKqHfUndZbEAOjcCAhBr'
             b'qWW3mSVivUfubsYbwUdUG3fSRPjaUPcpe8A')
-        decoded_payload = jwt.decode(example_jwt, example_pubkey)
+        decoded_payload = jwt.decode(example_jwt, example_pubkey, algorithms=['RS384'])
 
         self.assertEqual(decoded_payload, example_payload)
 
@@ -594,10 +594,10 @@ class TestJWT(unittest.TestCase):
 
         with open('tests/keys/testkey_rsa.pub', 'r') as rsa_pub_file:
             pub_rsakey = rsa_pub_file.read()
-            assert jwt.decode(jwt_message, pub_rsakey)
+            assert jwt.decode(jwt_message, pub_rsakey, algorithms=['RS256'])
 
             load_output = jwt_load(jwt_message)
-            jwt_verify_signature(key=pub_rsakey, *load_output)
+            jwt_verify_signature(key=pub_rsakey, algorithms=['RS256'], *load_output)
 
     @unittest.skipIf(not has_crypto, 'Not supported without cryptography library')
     def test_encode_decode_with_rsa_sha384(self):
@@ -611,7 +611,7 @@ class TestJWT(unittest.TestCase):
         with open('tests/keys/testkey_rsa.pub', 'r') as rsa_pub_file:
             pub_rsakey = load_ssh_public_key(ensure_bytes(rsa_pub_file.read()),
                                              backend=default_backend())
-            assert jwt.decode(jwt_message, pub_rsakey)
+            assert jwt.decode(jwt_message, pub_rsakey, algorithms=['RS384'])
 
         # string-formatted key
         with open('tests/keys/testkey_rsa', 'r') as rsa_priv_file:
@@ -621,10 +621,10 @@ class TestJWT(unittest.TestCase):
 
         with open('tests/keys/testkey_rsa.pub', 'r') as rsa_pub_file:
             pub_rsakey = rsa_pub_file.read()
-            assert jwt.decode(jwt_message, pub_rsakey)
+            assert jwt.decode(jwt_message, pub_rsakey, algorithms=['RS384'])
 
             load_output = jwt_load(jwt_message)
-            jwt_verify_signature(key=pub_rsakey, *load_output)
+            jwt_verify_signature(key=pub_rsakey, algorithms=['RS384'], *load_output)
 
     @unittest.skipIf(not has_crypto, 'Not supported without cryptography library')
     def test_encode_decode_with_rsa_sha512(self):
@@ -638,10 +638,10 @@ class TestJWT(unittest.TestCase):
         with open('tests/keys/testkey_rsa.pub', 'r') as rsa_pub_file:
             pub_rsakey = load_ssh_public_key(ensure_bytes(rsa_pub_file.read()),
                                              backend=default_backend())
-            assert jwt.decode(jwt_message, pub_rsakey)
+            assert jwt.decode(jwt_message, pub_rsakey, algorithms=['RS512'])
 
             load_output = jwt_load(jwt_message)
-            jwt_verify_signature(key=pub_rsakey, *load_output)
+            jwt_verify_signature(key=pub_rsakey, algorithms=['RS512'], *load_output)
 
         # string-formatted key
         with open('tests/keys/testkey_rsa', 'r') as rsa_priv_file:
@@ -651,10 +651,10 @@ class TestJWT(unittest.TestCase):
 
         with open('tests/keys/testkey_rsa.pub', 'r') as rsa_pub_file:
             pub_rsakey = rsa_pub_file.read()
-            assert jwt.decode(jwt_message, pub_rsakey)
+            assert jwt.decode(jwt_message, pub_rsakey, algorithms=['RS512'])
 
             load_output = jwt_load(jwt_message)
-            jwt_verify_signature(key=pub_rsakey, *load_output)
+            jwt_verify_signature(key=pub_rsakey, algorithms=['RS512'], *load_output)
 
     def test_rsa_related_algorithms(self):
         if has_crypto:
@@ -872,6 +872,25 @@ class TestJWT(unittest.TestCase):
         payload = jwt.decode(token, 'secret')
         self.assertEqual(payload, {'some_decimal': 'it worked'})
 
+    @unittest.skipIf(not has_crypto, 'Not supported without cryptography library')
+    def test_verification_with_an_asymmetric_key_of_a_token_signed_with_a_symmetric_key(self):
+        with open('tests/keys/invalid_pub.pem', 'r') as rsa_pub_file:
+            pub_rsakey = rsa_pub_file.read()
+
+            # Normally, we would generate a token using RSA private key
+            # token = jwt.encode({'superuser': False}, rsaPrivateKey, 'RS256')
+
+            # But an attacker can instead generate an HMAC token using RSA public key
+            hmac_key = pub_rsakey
+            token = jwt.encode({'superuser': True}, hmac_key, 'HS256')
+
+            # It decodes and validates successfully, even though the attacker had no
+            # knowledge of the private key!
+            with self.assertRaises(DecodeError) as context:
+                jwt.decode(token, pub_rsakey)
+
+                exception = context.exception
+                self.assertEqual(str(exception), 'Signature verification failed')
 
 if __name__ == '__main__':
     unittest.main()
